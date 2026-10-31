@@ -27,16 +27,23 @@ say() { printf '%s: %s\n' "$fork" "$*"; }
 git ls-remote "git@github.com:$fork.git" "refs/heads/$branch" >/dev/null ||
   { say "the deploy key cannot read the fork"; exit 1; }
 
-newest_open="$(gh api "repos/$fork/actions/runs?branch=$branch&event=push&per_page=50" \
-  --jq '[.workflow_runs[] | select(.status != "completed") | .created_at] | max // ""')"
-if [ -n "$newest_open" ]; then
-  age=$(($(date +%s) - $(date -d "$newest_open" +%s)))
-  if [ "$age" -lt "$stuck_secs" ]; then
-    say "a push run is still going (newest started ${age}s ago); waiting"
+# A push run still going holds the step while one of its jobs on our runners (WAIT_LABEL,
+# graphide-) is unfinished, or while it is too new to have jobs; its jobs left on GitHub's
+# hosted runners (macOS, arm64, slim) do not, since the organization gets about 5 of those.
+wait_label=${WAIT_LABEL:-graphide-}
+now=$(date +%s)
+while read -r id created; do
+  [ -n "$id" ] || continue
+  age=$((now - $(date -d "$created" +%s)))
+  [ "$age" -ge "$stuck_secs" ] && { say "run $id has been going ${age}s; not waiting for it"; continue; }
+  read -r ours total < <(gh api "repos/$fork/actions/runs/$id/jobs?per_page=100" --jq \
+    ". as \$r | [.jobs[] | select(.status != \"completed\") | select(any(.labels[]; startswith(\"$wait_label\")))] | \"\(length) \(\$r.jobs | length)\"")
+  if [ "${ours:-0}" -gt 0 ] || { [ "${total:-0}" = 0 ] && [ "$age" -lt 600 ]; }; then
+    say "run $id still has ${ours:-0} job(s) on our runners going (started ${age}s ago); waiting"
     exit 0
   fi
-  say "a push run has been going ${age}s; stepping anyway"
-fi
+done < <(gh api "repos/$fork/actions/runs?branch=$branch&event=push&per_page=50" \
+  --jq '.workflow_runs[] | select(.status != "completed") | "\(.id) \(.created_at)"')
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
