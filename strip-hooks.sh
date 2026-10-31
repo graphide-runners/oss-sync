@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# strip-hooks.sh NAME...: rewrite each fork's setup commit ("Run workflows on Graphide runners")
+# strip-hooks.sh NAME...: rewrite each fork's setup commit ("Run CI|workflows on Graphide runners")
 # without the agent-hook files graphide-ci's drafter adds by default from release 7 (.claude/,
 # .cursor/, .mcp.json, .opencode/, AGENTS.md and the rest): a file the setup commit added is
 # dropped, one it changed (pydantic's AGENTS.md) goes back to its parent's. The commits after it
@@ -15,7 +15,7 @@ for name in "$@"; do
   g() { git -C "$w" "$@"; }
   g config user.name "graphide-oss sync"
   g config user.email "oss-sync@graphide.com"
-  s="$(g log --format=%H --grep='^Run workflows on Graphide runners' -1)"
+  s="$(g log --format=%H -E --grep='^Run (CI|workflows) on Graphide runners' -1)"
   [ -n "$s" ] || { echo "$fork: no setup commit"; rm -rf "$w"; continue; }
   mapfile -t paths < <(g diff-tree --no-commit-id --name-only -r "$s" | grep -v '^\.github/workflows/' || true)
   [ "${#paths[@]}" -gt 0 ] || { echo "$fork: setup commit carries no hook files"; rm -rf "$w"; continue; }
