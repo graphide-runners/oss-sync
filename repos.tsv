@@ -1,0 +1,11 @@
+# upstream	fork	branch
+# Each fork's deploy key (write) is this repository's secret DEPLOY_KEY_<fork name, upper case,
+# '-' as '_'>, and the workflow passes it by that name.
+tokio-rs/tokio	graphide-oss/tokio	master
+rust-lang/rust-analyzer	graphide-oss/rust-analyzer	master
+pydantic/pydantic	graphide-oss/pydantic	main
+prettier/prettier	graphide-oss/prettier	main
+fastapi/fastapi	graphide-oss/fastapi	master
+hashicorp/terraform	graphide-oss/terraform	main
+vitejs/vite	graphide-oss/vite	main
+gin-gonic/gin	graphide-oss/gin	master

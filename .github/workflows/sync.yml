@@ -1,0 +1,53 @@
+name: sync
+# Every 15 minutes, each fork in repos.tsv takes one step along its upstream (sync.sh).
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Print each step, push nothing"
+        type: boolean
+        default: false
+permissions:
+  actions: read
+  contents: read
+concurrency:
+  group: sync
+  cancel-in-progress: false
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Step each fork
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+          DEPLOY_KEY_TOKIO: ${{ secrets.DEPLOY_KEY_TOKIO }}
+          DEPLOY_KEY_RUST_ANALYZER: ${{ secrets.DEPLOY_KEY_RUST_ANALYZER }}
+          DEPLOY_KEY_PYDANTIC: ${{ secrets.DEPLOY_KEY_PYDANTIC }}
+          DEPLOY_KEY_PRETTIER: ${{ secrets.DEPLOY_KEY_PRETTIER }}
+          DEPLOY_KEY_FASTAPI: ${{ secrets.DEPLOY_KEY_FASTAPI }}
+          DEPLOY_KEY_TERRAFORM: ${{ secrets.DEPLOY_KEY_TERRAFORM }}
+          DEPLOY_KEY_VITE: ${{ secrets.DEPLOY_KEY_VITE }}
+          DEPLOY_KEY_GIN: ${{ secrets.DEPLOY_KEY_GIN }}
+        run: |
+          set -uo pipefail
+          keys="$RUNNER_TEMP/keys"
+          mkdir -m 700 "$keys"
+          # GitHub's host keys from its own meta endpoint, so ssh trusts nothing else.
+          gh api meta --jq '.ssh_keys[] | "github.com " + .' >"$keys/known_hosts"
+          failed=0
+          while IFS=$'\t' read -r up fork branch; do
+            case "$up" in ''|'#'*) continue ;; esac
+            var="DEPLOY_KEY_$(printf '%s' "${fork#*/}" | tr 'a-z-' 'A-Z_')"
+            key="${!var:-}"
+            if [ -z "$key" ]; then echo "::error::$fork: no secret $var"; failed=1; continue; fi
+            printf '%s\n' "$key" >"$keys/$var"
+            chmod 600 "$keys/$var"
+            export GIT_SSH_COMMAND="ssh -i $keys/$var -o IdentitiesOnly=yes -o UserKnownHostsFile=$keys/known_hosts -o StrictHostKeyChecking=yes"
+            if ! ./sync.sh "$up" "$fork" "$branch" </dev/null; then echo "::error::$fork: sync failed"; failed=1; fi
+          done <repos.tsv
+          exit "$failed"
