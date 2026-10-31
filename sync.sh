@@ -23,6 +23,10 @@ depth=${FETCH_DEPTH:-300}
 
 say() { printf '%s: %s\n' "$fork" "$*"; }
 
+# The deploy key still reaches the fork, checked even on a tick that waits.
+git ls-remote "git@github.com:$fork.git" "refs/heads/$branch" >/dev/null ||
+  { say "the deploy key cannot read the fork"; exit 1; }
+
 newest_open="$(gh api "repos/$fork/actions/runs?branch=$branch&event=push&per_page=50" \
   --jq '[.workflow_runs[] | select(.status != "completed") | .created_at] | max // ""')"
 if [ -n "$newest_open" ]; then

@@ -4,19 +4,17 @@
 # repo, admin:org), ssh-keygen, yq (mikefarah's), and this repository's remote
 # (graphide-oss/oss-sync) created first.
 #
-# For each fork: fork upstream's default branch only; Actions on, and every workflow GitHub
-# disabled in the fork that a push, pull request or call starts turned on (a fork starts with
-# them off); "Require approval for all
+# For each fork: fork upstream's default branch only; Actions on, the workflows a push, pull
+# request or call starts on and every other one off; "Require approval for all
 # external contributors" on fork pull requests, so no outsider's pull request runs a job; a
 # write deploy key, its private half straight into oss-sync's secret DEPLOY_KEY_<NAME> and
-# never printed or kept. PRIME=N (default 3) moves a new fork's branch N first-parent commits
-# back from upstream's tip, so its first push run and the sync's next N steps give the shadow
-# N+1 runs at upstream's own commits.
+# never printed or kept. Then prime.sh, once, and turn the sync workflow on.
 set -euo pipefail
 
 org=graphide-oss
 sync_repo="$org/oss-sync"
-prime=${PRIME:-3}
+# A new organization has deploy keys off.
+gh api -X PATCH "orgs/$org" -F deploy_keys_enabled_for_repositories=true --jq .login >/dev/null
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
@@ -28,27 +26,27 @@ while IFS=$'\t' read -r up fork branch; do
   case "$up" in '' | '#'*) continue ;; esac
   name="${fork#*/}"
   var="DEPLOY_KEY_$(printf '%s' "$name" | tr 'a-z-' 'A-Z_')"
-  new=0
   if ! gh api "repos/$fork" --jq .full_name >/dev/null 2>&1; then
     echo "$fork: forking $up"
     gh api -X POST "repos/$up/forks" -f organization="$org" -F default_branch_only=true --jq .full_name >/dev/null
     for _ in $(seq 60); do gh api "repos/$fork/branches/$branch" --jq .name >/dev/null 2>&1 && break; sleep 5; done
-    new=1
   fi
 
   gh api -X PUT "repos/$fork/actions/permissions" -F enabled=true -f allowed_actions=all
   gh api -X PUT "repos/$fork/actions/permissions/fork-pr-contributor-approval" \
     -f approval_policy=all_external_contributors
-  # Only workflows a push, a pull request or another workflow's call starts: cron and event
-  # bots (stale, sponsors, translations) and workflow_run followers (docs deploys) stay off.
-  gh api "repos/$fork/actions/workflows?per_page=100" \
-    --jq '.workflows[] | select(.state != "active") | "\(.id) \(.path)"' |
-    while read -r id path; do
+  # Only workflows a push, a pull request or another workflow's call starts are on: cron and
+  # event bots (stale, sponsors, translations) and workflow_run followers (docs deploys) are
+  # turned off, since Actions on makes every workflow of the fork active.
+  gh api "repos/$fork/actions/workflows?per_page=100" --jq '.workflows[] | "\(.id) \(.state) \(.path)"' |
+    while read -r id state path; do
       on="$(gh api "repos/$fork/contents/$path?ref=$branch" --jq .content | base64 -d |
         yq -r '.["on"] | ((select(tag=="!!str") | .), (select(tag=="!!seq") | .[]), (select(tag=="!!map") | keys | .[]))' 2>/dev/null || true)"
       if printf '%s\n' "$on" | grep -qxE 'push|pull_request|workflow_call'; then
-        gh api -X PUT "repos/$fork/actions/workflows/$id/enable"
-        echo "$fork: enabled $path"
+        [ "$state" = active ] || { gh api -X PUT "repos/$fork/actions/workflows/$id/enable"; echo "$fork: enabled $path"; }
+      elif [ "$state" = active ]; then
+        gh api -X PUT "repos/$fork/actions/workflows/$id/disable"
+        echo "$fork: disabled $path ($(printf '%s' "$on" | tr '\n' ' '))"
       fi
     done
 
@@ -59,12 +57,5 @@ while IFS=$'\t' read -r up fork branch; do
     [ "$(wc -c <"$tmp/$name")" -gt 300 ] || { echo "$fork: key file too short"; exit 1; }
     gh secret set "$var" --repo "$sync_repo" <"$tmp/$name"
     rm -f "$tmp/$name" "$tmp/$name.pub"
-  fi
-
-  if [ "$new" = 1 ] && [ "$prime" -gt 0 ]; then
-    back="$(gh api "repos/$up/commits?sha=$branch&per_page=1" --jq '.[0].sha')"
-    for _ in $(seq "$prime"); do back="$(gh api "repos/$up/commits/$back" --jq '.parents[0].sha')"; done
-    echo "$fork: priming at $back, $prime first-parent commits behind upstream"
-    gh api -X PATCH "repos/$fork/git/refs/heads/$branch" -f sha="$back" -F force=true --jq .object.sha >/dev/null
   fi
 done <"$here/repos.tsv"
