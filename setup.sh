@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # setup.sh: make graphide-oss's forks from repos.tsv and everything the sync needs, once. Run
 # again, it does only what is missing. Needs gh logged in as an owner of graphide-oss (scopes
-# repo, admin:org, workflow), ssh-keygen, and this repository's remote (graphide-oss/oss-sync)
-# created first.
+# repo, admin:org), ssh-keygen, yq (mikefarah's), and this repository's remote
+# (graphide-oss/oss-sync) created first.
 #
 # For each fork: fork upstream's default branch only; Actions on, and every workflow GitHub
-# disabled in the fork turned on (a fork starts with them off); "Require approval for all
+# disabled in the fork that a push, pull request or call starts turned on (a fork starts with
+# them off); "Require approval for all
 # external contributors" on fork pull requests, so no outsider's pull request runs a job; a
 # write deploy key, its private half straight into oss-sync's secret DEPLOY_KEY_<NAME> and
 # never printed or kept. PRIME=N (default 3) moves a new fork's branch N first-parent commits
@@ -38,9 +39,18 @@ while IFS=$'\t' read -r up fork branch; do
   gh api -X PUT "repos/$fork/actions/permissions" -F enabled=true -f allowed_actions=all
   gh api -X PUT "repos/$fork/actions/permissions/fork-pr-contributor-approval" \
     -f approval_policy=all_external_contributors
+  # Only workflows a push, a pull request or another workflow's call starts: cron and event
+  # bots (stale, sponsors, translations) and workflow_run followers (docs deploys) stay off.
   gh api "repos/$fork/actions/workflows?per_page=100" \
-    --jq '.workflows[] | select(.state == "disabled_fork" or .state == "disabled_manually") | .id' |
-    while read -r id; do gh api -X PUT "repos/$fork/actions/workflows/$id/enable"; done
+    --jq '.workflows[] | select(.state != "active") | "\(.id) \(.path)"' |
+    while read -r id path; do
+      on="$(gh api "repos/$fork/contents/$path?ref=$branch" --jq .content | base64 -d |
+        yq -r '.["on"] | ((select(tag=="!!str") | .), (select(tag=="!!seq") | .[]), (select(tag=="!!map") | keys | .[]))' 2>/dev/null || true)"
+      if printf '%s\n' "$on" | grep -qxE 'push|pull_request|workflow_call'; then
+        gh api -X PUT "repos/$fork/actions/workflows/$id/enable"
+        echo "$fork: enabled $path"
+      fi
+    done
 
   if ! printf '%s\n' "$secrets" | grep -qx "$var"; then
     echo "$fork: deploy key and $sync_repo secret $var"

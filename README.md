@@ -17,4 +17,9 @@ to any upstream repository.
 - `setup.sh`: makes the forks once (Actions on, fork workflows on, approval required for
   outside contributors' pull requests, deploy keys, priming 3 commits behind).
 
+- `fork-commits/<name>.sh`: the fork's own commits beyond its setup pull request, as scripts run
+  in its checkout, so a commit that stops picking cleanly is made again: tokio's Loom jobs run in
+  the fork (they are guarded on tokio-rs owning the repository), and rust-analyzer's CI runs on
+  pushes to master (upstream runs it on pull requests and the merge queue only).
+
 To add a repository: a line in `repos.tsv`, its secret name in `sync.yml`, then `setup.sh`.
