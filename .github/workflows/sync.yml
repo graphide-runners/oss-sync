@@ -1,9 +1,11 @@
 name: sync
-# Every 15 minutes, each fork in repos.tsv takes one step along its upstream (sync.sh).
-# GitHub drops a schedule when a repository moves between organizations, and binds it to whoever
-# last changed the cron line: a commit that leaves that line alone registers nothing (the
-# transfer to graphide-runners left it unfired from 05:22Z to past 14:30Z). Off the quarter
-# hours, where GitHub's schedule queue is least loaded.
+# About every 15 minutes, each fork in repos.tsv takes one step along its upstream (sync.sh).
+# Each run dispatches the next one 10 minutes after its steps end ("Chain the next run"), because
+# GitHub's schedule never fired for this repository after its transfer to graphide-runners: not
+# after a commit changing the cron line (b99622b) nor after the workflow was disabled and enabled
+# again (15:13Z). The schedule stays as a backup; the chain dispatches nothing while another run is
+# queued or running, so the two never make two chains. Stop it with the repository variable
+# SYNC_CHAIN=off, or by disabling the workflow.
 on:
   schedule:
     - cron: "4-59/15 * * * *"
@@ -14,7 +16,8 @@ on:
         type: boolean
         default: false
 permissions:
-  actions: read
+  # write: the chain step dispatches this workflow again (a GITHUB_TOKEN dispatch does start a run).
+  actions: write
   contents: read
 concurrency:
   group: sync
@@ -55,3 +58,15 @@ jobs:
             if ! ./sync.sh "$up" "$fork" "$branch" </dev/null; then echo "::error::$fork: sync failed"; failed=1; fi
           done <repos.tsv
           exit "$failed"
+      - name: Chain the next run
+        if: ${{ always() && !inputs.dry_run && vars.SYNC_CHAIN != 'off' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          sleep 600
+          # Another run already queued or running (the schedule's, or a hand dispatch) carries on.
+          others=$(gh run list -R "$GITHUB_REPOSITORY" -w sync.yml -L 20 --json databaseId,status \
+            --jq "[.[] | select(.databaseId != $GITHUB_RUN_ID and (.status == \"queued\" or .status == \"pending\" or .status == \"waiting\" or .status == \"in_progress\"))] | length")
+          if [ "${others:-0}" != 0 ]; then echo "another run is queued or running; not chaining"; exit 0; fi
+          gh workflow run sync.yml -R "$GITHUB_REPOSITORY" -f dry_run=false
