@@ -40,6 +40,11 @@ jobs:
           DEPLOY_KEY_TERRAFORM: ${{ secrets.DEPLOY_KEY_TERRAFORM }}
           DEPLOY_KEY_VITE: ${{ secrets.DEPLOY_KEY_VITE }}
           DEPLOY_KEY_GIN: ${{ secrets.DEPLOY_KEY_GIN }}
+          DEPLOY_KEY_NETBOX: ${{ secrets.DEPLOY_KEY_NETBOX }}
+          # Private copies (not forks): this workflow's token cannot read their runs, so the
+          # loop reads these with GH_TOKEN_PRIVATE (a token with Actions: read on each).
+          PRIVATE_FORKS: "graphide-oss/netbox"
+          GH_TOKEN_PRIVATE: ${{ secrets.OSS_SYNC_PRIVATE_READ_TOKEN }}
         run: |
           set -uo pipefail
           keys="$RUNNER_TEMP/keys"
@@ -47,8 +52,17 @@ jobs:
           # GitHub's host keys from its own meta endpoint, so ssh trusts nothing else.
           gh api meta --jq '.ssh_keys[] | "github.com " + .' >"$keys/known_hosts"
           failed=0
+          public_token="$GH_TOKEN"
           while IFS=$'\t' read -r up fork branch; do
             case "$up" in ''|'#'*) continue ;; esac
+            export GH_TOKEN="$public_token"
+            case " $PRIVATE_FORKS " in
+              *" $fork "*)
+                # Until the read token is stored, the private copy is skipped, not failed: a red
+                # run every round would hide the forks' real failures.
+                if [ -z "${GH_TOKEN_PRIVATE:-}" ]; then echo "::notice::$fork: no secret OSS_SYNC_PRIVATE_READ_TOKEN yet; not stepping"; continue; fi
+                export GH_TOKEN="$GH_TOKEN_PRIVATE" ;;
+            esac
             # A fork steps only once its last step's push runs have all ended: graphide-oss runs
             # 4 jobs at a time, and stepping every round left 55 jobs queued (16:40Z), one of them
             # an hour; a newer push would also cancel the runs a sample needs.

@@ -9,3 +9,4 @@ fastapi/fastapi	graphide-oss/fastapi	master
 hashicorp/terraform	graphide-oss/terraform	main
 vitejs/vite	graphide-oss/vite	main
 gin-gonic/gin	graphide-oss/gin	master
+netbox-community/netbox	graphide-oss/netbox	main
