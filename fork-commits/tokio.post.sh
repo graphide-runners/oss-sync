@@ -23,3 +23,10 @@ cls $w/ci.yml 8 clippy docs minrust test-tokio-full test-workspace-all-features 
 cls $w/uring-kernel-version-test.yml 8 build
 cls $w/stress-test.yml 8 stress-test
 git diff --quiet || git commit -qam "graphide-oss: FreeBSD on GitHub; per-job graphide-ci classes" -m "miri-test on 32 vCPUs, the build and test jobs on 8, Loom on the setup pull request's 4."
+
+# The setup pull request moved the arm64 legs to graphide-linux-arm64-4, a class production does
+# not serve (CI_ARM64 off): they queued for ever and held up the whole work queue. Back on GitHub's.
+f=.github/workflows/ci.yml
+grep -q 'graphide-linux-arm64-' "$f" || { echo "$f: no arm64 label to put back"; exit 1; }
+sed -i -E 's/graphide-linux-arm64-[0-9]+/ubuntu-24.04-arm/g' "$f"
+git commit -qam "graphide-oss: arm64 legs back on GitHub's ubuntu-24.04-arm" -m "graphide-ci serves no Linux arm64 class yet; the setup pull request moved them anyway."
