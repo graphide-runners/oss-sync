@@ -1,10 +1,12 @@
 name: sync
 # Every 15 minutes, each fork in repos.tsv takes one step along its upstream (sync.sh).
-# GitHub drops a schedule when a repository moves between organizations; a commit to this file
-# registers it again (the transfer to graphide-runners left it unfired from 05:22Z to 12:10Z).
+# GitHub drops a schedule when a repository moves between organizations, and binds it to whoever
+# last changed the cron line: a commit that leaves that line alone registers nothing (the
+# transfer to graphide-runners left it unfired from 05:22Z to past 14:30Z). Off the quarter
+# hours, where GitHub's schedule queue is least loaded.
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "4-59/15 * * * *"
   workflow_dispatch:
     inputs:
       dry_run:
