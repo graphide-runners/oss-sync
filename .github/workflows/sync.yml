@@ -49,6 +49,15 @@ jobs:
           failed=0
           while IFS=$'\t' read -r up fork branch; do
             case "$up" in ''|'#'*) continue ;; esac
+            # A fork steps only once its last step's push runs have all ended: graphide-oss runs
+            # 4 jobs at a time, and stepping every round left 55 jobs queued (16:40Z), one of them
+            # an hour; a newer push would also cancel the runs a sample needs.
+            busy=0
+            for st in queued in_progress waiting pending requested; do
+              n=$(gh api "repos/$fork/actions/runs?branch=$branch&event=push&status=$st&per_page=1" --jq .total_count) || n=1
+              busy=$((busy + n))
+            done
+            if [ "$busy" -gt 0 ]; then echo "$fork: $busy push runs not ended; not stepping this round"; continue; fi
             var="DEPLOY_KEY_$(printf '%s' "${fork#*/}" | tr 'a-z-' 'A-Z_')"
             key="${!var:-}"
             if [ -z "$key" ]; then echo "::error::$fork: no secret $var"; failed=1; continue; fi
