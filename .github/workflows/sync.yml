@@ -1,5 +1,7 @@
 name: sync
 # Every 15 minutes, each fork in repos.tsv takes one step along its upstream (sync.sh).
+# GitHub drops a schedule when a repository moves between organizations; a commit to this file
+# registers it again (the transfer to graphide-runners left it unfired from 05:22Z to 12:10Z).
 on:
   schedule:
     - cron: "*/15 * * * *"
