@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # setup.sh: make graphide-oss's forks from repos.tsv and everything the sync needs, once. Run
 # again, it does only what is missing. Needs gh logged in as an owner of graphide-oss (scopes
-# repo, admin:org), ssh-keygen, yq (mikefarah's), and this repository's remote
-# (graphide-oss/oss-sync) created first.
+# repo, admin:org), ssh-keygen, yq (mikefarah's), and this repository
+# (graphide-runners/oss-sync) created first.
 #
 # For each fork: fork upstream's default branch only; Actions on, the workflows a push, pull
 # request or call starts on and every other one off; "Require approval for all
@@ -12,7 +12,9 @@
 set -euo pipefail
 
 org=graphide-oss
-sync_repo="$org/oss-sync"
+# The sync runs in an organization of its own: in this one it would queue behind the forks' jobs
+# for the same 20 hosted runners.
+sync_repo=graphide-runners/oss-sync
 # A new organization has deploy keys off.
 gh api -X PATCH "orgs/$org" -F deploy_keys_enabled_for_repositories=true --jq .login >/dev/null
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

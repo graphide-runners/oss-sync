@@ -1,7 +1,8 @@
 # oss-sync
 
-Graphide shadows public repositories on graphide-ci from forks in this organization
-(Ben, 2026-10-30). Each fork's default branch follows its upstream one first-parent commit at
+Graphide shadows public repositories on graphide-ci from forks in the `graphide-oss`
+organization (Ben, 2026-10-30). This repository lives in `graphide-runners` so its job never
+queues behind the forks' jobs for graphide-oss's 20 hosted runners. Each fork's default branch follows its upstream one first-parent commit at
 a time, so the fork's own CI runs once at each of upstream's commits, and graphide-ci's
 shadow replays every job of those runs on our runners and compares them. Nothing is written
 to any upstream repository.
