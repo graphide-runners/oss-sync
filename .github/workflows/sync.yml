@@ -32,6 +32,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+          # Replay (Ben, 2026-11-01): the forks were rewound 40 first-parent commits so they
+          # step through upstream's history one commit a round instead of waiting at its tip;
+          # sync.sh's default (6) would skip a rewound fork straight back to 6 behind.
+          MAX_BEHIND: "45"
           DEPLOY_KEY_TOKIO: ${{ secrets.DEPLOY_KEY_TOKIO }}
           DEPLOY_KEY_RUST_ANALYZER: ${{ secrets.DEPLOY_KEY_RUST_ANALYZER }}
           DEPLOY_KEY_PYDANTIC: ${{ secrets.DEPLOY_KEY_PYDANTIC }}
