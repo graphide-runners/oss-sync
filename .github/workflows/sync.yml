@@ -36,6 +36,13 @@ jobs:
           # step through upstream's history one commit a round instead of waiting at its tip;
           # sync.sh's default (6) would skip a rewound fork straight back to 6 behind.
           MAX_BEHIND: "45"
+          # Push governor (Ben, 2026-11-01: the forks spent production's whole $650 daily cap by
+          # 12:46Z and every tenant's jobs waited): from GOVERNOR_FROM on, a fork steps at most
+          # PUSHES_PER_DAY times a UTC day, and the forks in PUSHES_ONE_A_DAY (about 10,000 and
+          # 8,000 job-seconds a push) once. Raise them only when the cap leaves room.
+          GOVERNOR_FROM: "2026-11-02"
+          PUSHES_PER_DAY: "2"
+          PUSHES_ONE_A_DAY: "graphide-oss/tokio graphide-oss/pydantic"
           DEPLOY_KEY_TOKIO: ${{ secrets.DEPLOY_KEY_TOKIO }}
           DEPLOY_KEY_RUST_ANALYZER: ${{ secrets.DEPLOY_KEY_RUST_ANALYZER }}
           DEPLOY_KEY_PYDANTIC: ${{ secrets.DEPLOY_KEY_PYDANTIC }}
@@ -76,6 +83,17 @@ jobs:
               busy=$((busy + n))
             done
             if [ "$busy" -gt 0 ]; then echo "$fork: $busy push runs not ended; not stepping this round"; continue; fi
+            # The governor counts today's pushes as distinct head commits of today's push runs.
+            # GitHub stamped run times an hour ahead around the 2026-11-01 clock change, so a
+            # count near midnight can be off by an hour; the governor errs toward not stepping.
+            today=$(date -u +%F)
+            if [[ ! "$today" < "$GOVERNOR_FROM" ]]; then
+              limit="$PUSHES_PER_DAY"
+              case " $PUSHES_ONE_A_DAY " in *" $fork "*) limit=1 ;; esac
+              pushed=$(gh api "repos/$fork/actions/runs?branch=$branch&event=push&created=>=${today}T00:00:00Z&per_page=100" \
+                --jq '[.workflow_runs[].head_sha] | unique | length') || pushed="$limit"
+              if [ "$pushed" -ge "$limit" ]; then echo "$fork: $pushed pushes today, the governor allows $limit; not stepping"; continue; fi
+            fi
             var="DEPLOY_KEY_$(printf '%s' "${fork#*/}" | tr 'a-z-' 'A-Z_')"
             key="${!var:-}"
             if [ -z "$key" ]; then echo "::error::$fork: no secret $var"; failed=1; continue; fi
