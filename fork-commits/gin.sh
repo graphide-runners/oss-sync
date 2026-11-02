@@ -24,6 +24,8 @@ done
 git commit -qam "graphide-oss: Run Tests and CodeQL run on dispatch too"
 
 f=.github/workflows/gin.yml
+# Upstream added the OIDC lines at 3329b63 (#4823); a step before it has none, so this commit waits.
+! grep -qE 'id-token|use_oidc' "$f" && { echo "$f: no OIDC lines yet; no Codecov commit"; exit 0; }
 [ "$(grep -cx '      id-token: write' "$f")" = 1 ] && [ "$(grep -cx '          use_oidc: true' "$f")" = 1 ] || { echo "$f: OIDC lines changed"; exit 1; }
 sed -i -e '/^      id-token: write$/d' -e '/^          use_oidc: true$/d' "$f"
 ! grep -qE 'id-token|use_oidc' "$f" || { echo "$f: edit missed"; exit 1; }
