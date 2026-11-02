@@ -40,9 +40,12 @@ jobs:
           # 12:46Z and every tenant's jobs waited): from GOVERNOR_FROM on, a fork steps at most
           # PUSHES_PER_DAY times a UTC day, and the forks in PUSHES_ONE_A_DAY (about 10,000 and
           # 8,000 job-seconds a push) once. Raise them only when the cap leaves room.
+          # tokio moved to 2 a day (2026-11-02 10:05Z): with real-run copies stopped (04:27Z) the
+          # forks spent about $20 by 06:45Z against their $300, and the speedups loop proposes
+          # tokio's Loom legs only from a push after R25 (installed by 10:00Z).
           GOVERNOR_FROM: "2026-11-02"
           PUSHES_PER_DAY: "2"
-          PUSHES_ONE_A_DAY: "graphide-oss/tokio graphide-oss/pydantic"
+          PUSHES_ONE_A_DAY: "graphide-oss/pydantic"
           DEPLOY_KEY_TOKIO: ${{ secrets.DEPLOY_KEY_TOKIO }}
           DEPLOY_KEY_RUST_ANALYZER: ${{ secrets.DEPLOY_KEY_RUST_ANALYZER }}
           DEPLOY_KEY_PYDANTIC: ${{ secrets.DEPLOY_KEY_PYDANTIC }}
